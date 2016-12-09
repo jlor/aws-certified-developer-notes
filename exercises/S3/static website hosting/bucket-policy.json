@@ -1,0 +1,15 @@
+{
+	"Id": "s3.jlor.dk",
+		"Version": "2012-10-17",
+		"Statement": [
+		{
+			"Sid": "Stmt1481272973376",
+			"Action": [
+				"s3:GetObject"
+				],
+			"Effect": "Allow",
+			"Resource": "arn:aws:s3:::s3.jlor.dk/*",
+			"Principal": "*"
+		}
+	]
+}

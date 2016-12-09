@@ -147,4 +147,41 @@
                 - Amazon does NOT store the encryption key
         - Both can be used simultaneously
 - DynamoDB
-    - 
+    - Components
+        - Table: Collection of data (items). Think DB table.
+        - Item: Collection of attributes. Think tuples.
+        - Attribute: Fundamental data element. Think DB fields/columns.
+        - Schemaless: Each item can have its own distinct attributes - other than primary key!
+        - Scalar attributes: Most attributes are scalar meaning they can only have one value. (Strings, numbers & Binary)
+        - Nested attributes: Nested attributes can support up to 32 levels nesting depth
+        - Primary Key
+            - Partition key: A single attribute that distinguish the item from all others. Also known as the "hash attribute".
+            - Composite key (partition key + sort key): Partition key is fed to hash function to determine physical storage location. Multiple items with same partition key will be placed on same partition sorted according to the sort key! Sort key also known as the "range attribute".
+            - Must be of scalar value: String, Number, Binary.
+        - Secondary indexes: Allows quering using alternate key (in addition to queries on primary key)
+            - Global: Index with partition key + sort key that can be different from those on the table (max 5 per table)
+                - Consume THEIR OWN provision throughput for read/write (specified upon index creation)
+                - Can be created AFTER table creation
+            - Local: Index that has same partition key as the table, but different sort key. (max 5 per table)
+                - Consume SAME read/write throughput from original table
+                - Can only be created DURING table creation
+            - Index will belong to a table (the base table). 
+            - Indexes are maintained automatically by DynamoDB.
+            - Upon Index creation you can specify which attributes should be "projected" or copied from base table to index. DynamoDB will as a minimum project key attributes (partition key + sort key)
+        - Read/Write capacity
+            - Used for partitioning across multiple servers
+        - Streams
+            - Optional
+            - Captures data modification events represented by a "stream record" on:
+                - New item added: Stream captures an image of the entire item.
+                - Item updated: Stream captures before and after image of modified attributes.
+                - Item deleted: Stream captures image of entire item before deletion.
+            - Contains:
+                - Name of table
+                - Event timestamp
+                - other metadata
+            - A record lives for 24 hours and is then removed from the stream
+            - Can be used as a trigger for AWS Lambda.
+                - Example: New Customer entries trigger Lambda which in turn trigger Simple Email Service (SES) to send welcome mail to said customer.
+
+            
