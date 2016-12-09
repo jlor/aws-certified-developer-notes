@@ -1,0 +1,150 @@
+- S3
+    - Details
+        - Max 100 buckets
+        - Unique bucket names, DNS name convention
+        - Multiple regions. Data stays in region unless explicitly moved.
+        - Min size: 0b
+        - Max size: 5Tb
+        - > 5Gb requires multipart upload
+        - Multipart upload recommended on >= 100Mb
+        - Multipart can upload parallel and out of order
+        - CompleteMultipartUpload API reassembles the file after multipart upload
+        - Can be encrypted before WRITE to disk, decrypted ON download
+    - Data Consistency
+        - New objects: Read-after-write consistency
+            - No stale reads possible
+            - Potential higher read latency
+            - Potential lower read throughput
+        - Updated objects: Eventual consistency
+            - Stale reads possible
+            - Lowest read latency
+            - Highest read throughput
+    - Performance
+        - Consistent:
+            - > 100 put/list/update requests/s
+            - > 300 get requests/s
+        - Burst:
+            - > 300 put/list/update requests/s
+            - > 800 get requests/s
+        - Request more if needed prior to production
+    - Performance Optimizations
+            - S3 keeps index of object keynames in each region
+            - BAD:
+                - ex/2016-12-07/p1.jpg
+                - ex/2016-12-07/p2.jpg
+                - ex/2016-12-07/p3.jpg
+                - ex/2016-12-07/p4.jpg
+            - GOOD:
+                - ex/e87f-2016-12-07/p1.jpg
+                - ex/a023-2016-12-07/p2.jpg
+                - ex/b753-2016-12-07/p3.jpg
+                - ex/18fa-2016-12-07/p4.jpg
+            - Requests don't all float through same node (indexes built on hashes rather than the same date string)
+            - GET heavy workflow => use CloudFront CDN as caching service
+                - Limits the requests on S3
+    - Hosting static websites
+        - HTML/CSS/Javascript in Buckets.
+            - Custom error pages
+            - Custom index file
+            - Custom redirect rules
+        - S3 gives default URL
+            - <bucket-name>.s3-website-<AWS region>.amazonaws.com
+            - Route 53 integration for custom names
+        - Bucket name must match domain name (dashsoft.dk -> S3://dashsoft.dk, www.dashsoft.dk -> s3://www.dashsoft.dk)
+            - if someone used that bucket name, feature can't be used
+    - S3 IAM and Bucket policies
+        - more: https://aws.amazon.com/blogs/security/iam-policies-and-bucket-policies-and-acls-oh-my-controlling-access-to-s3-resources/
+        - IAM policy: User level (User policy)
+            - Multiple users can be assigned same IAM policy
+            - Attached to a user, so can not be used to grant anonymous users permissions
+            - JSON based 
+        - Bucket policy: Resource level (resource-based policy)
+            - JSON file attached to resource
+                - Who is allowed to access resources?
+                - What that user can do with those resources?
+                - Can contain conditions (e.g. StringEquals)
+            - max 20kb size
+            - SHOULD BE USED to manage cross-account permissions for all Amazon S3 permissions
+        - ACLs:
+            - Legacy.
+            - For buckets and objects
+            - More restrictive than Bucket Policies
+                - Can manage permissions on INDIVIDUAL OBJECTS WITHIN A BUCKET
+            - XML based
+            - Grant read/write to OTHER AWS ACCOUNTS
+            - No conditional permissions
+            - Can not explicitly deny permissions
+            - Only way to manage access to objects not owned by the bucket owner
+        - Bucket owner has full permission as default
+            - Bucket owner paying bills can deny access or modify objects regardless of who owns them
+        - Explicit DENY always overrides allows in policies.
+    - Logging S3 API calls
+        - CloudTrail
+            - Bucket levels operations
+            - Logs all API calls
+            - Use with CloudWatch to filter certain calls and notify on occurences
+        - Amazon S3 Server Access Logs
+            - Object level operations
+            - Logs GET
+            - May take up to 1 hour before showing logs
+            - on a best effort basis - not for completely accurate logging!!
+        - Saved to S3 bucket
+    - Object Versioning
+        - Three states: Versioning enabled, Versioning suspended, unversioned
+            - Once version-enabled a bucket cannot be unversioned.
+            - Version-enabled can be version suspended
+                - Existing versions will remain.
+                - New objects will be given version ID null
+        - Setup at bucket level
+        - New versions of objects are given a Version ID
+        - Upon GET the latest version is returned
+        - Upon DELETE all versions remain in bucket, but a delete marker will be inserted on the object. Will appear to be deleted.
+        - Permanent deletion of version: Specify ID. Next ID will be current version.
+        - Restore a version:
+            - Copy from ID (old versions ID) to same bucket
+                - works because: GET -> PUT (gets new ID)
+            - Delete current versions ID (i.e. next ID will be current)
+        - Lifecycle management to handle versions life. Examples:
+            - Send noncurrent versions to amazon Glacier?
+            - Permanently delete objects that have been non-current for 180 days
+    - S3 Encryption
+        - Protecting data in-transit
+            - SSL or client-side encryption or...
+            - AWS KMS-managed (Key Management System) Customer Master Key (CMK)
+                - Unique encryption key for each object
+                - Amazon knows master key
+                - On upload:
+                    - Client request key from AWS KMS
+                    - KMS returns key: plain text + cipher blob
+                    - plain text used to encrypt object data
+                    - cipher blob to upload to S3 as object metadata
+                - On download:
+                    - Client downloads encrypted object data + cipher blob in object metadata
+                    - Client sends cipher blob to KMS and gets plain text back
+                    - plain text used to decrypt object data
+            - Client-side master key:
+                - Amazon does NOT know master key
+                - on upload:
+                    - Client provides master key to AWS S3 encryption client (LOCALLY)
+                    - S3 client generates random data key and encrypts it with master key
+                    - S3 client encrypts data using data key and uploads material description as part of object metadata (x-amz-meta-x-amz-key)
+                - on download:
+                    - Client downloads encrypted object WITH metadata
+                    - Metadata tells client which master key to use
+                    - Client decrypts the data key using that master key
+                    - Client uses decrypted data key to decrypt object
+        - Protecting data at rest
+            - Server side encryption (by AWS S3)
+                - Must add x-amz-server-side-encryption request header to upload request
+                - Uses AES-256 
+                - Bucket policy can require all objects to use server-side encryption
+                    - StringNotEquals "x-amz-server-side-encryption" = "AES-256"
+            - KMS-managed encryption keys
+                - Uses customer master keys
+                - More flexibility in controlling keys
+            - Customer-provided encryption keys
+                - Gives the option to generate your own keys outside the environment
+                - Amazon does NOT store the encryption key
+        - Both can be used simultaneously
+- DynamoDB
+    - 
