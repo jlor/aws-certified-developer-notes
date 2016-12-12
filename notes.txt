@@ -159,15 +159,23 @@
             - Composite key (partition key + sort key): Partition key is fed to hash function to determine physical storage location. Multiple items with same partition key will be placed on same partition sorted according to the sort key! Sort key also known as the "range attribute".
             - Must be of scalar value: String, Number, Binary.
         - Secondary indexes: Allows quering using alternate key (in addition to queries on primary key)
-            - Global: Index with partition key + sort key that can be different from those on the table (max 5 per table)
+            - Global (GSI): Index with partition key + sort key that can be different from those on the table (max 5 per table)
                 - Consume THEIR OWN provision throughput for read/write (specified upon index creation)
                 - Can be created AFTER table creation
-            - Local: Index that has same partition key as the table, but different sort key. (max 5 per table)
+                - Updated asynchronuously => changes are EVENTUALLY CONSISTENT
+            - Local (LSI): Index that has same partition key as the table, but different sort key. (max 5 per table)
                 - Consume SAME read/write throughput from original table
+                    - Every partition is scoped to a table partition with the same partition key value
                 - Can only be created DURING table creation
+                - Can be queried using either eventual consistent or strongly consistent.
             - Index will belong to a table (the base table). 
+            - Can hold 5 LSI and 5 GSI for a total of 10 indexes per table.
             - Indexes are maintained automatically by DynamoDB.
             - Upon Index creation you can specify which attributes should be "projected" or copied from base table to index. DynamoDB will as a minimum project key attributes (partition key + sort key)
+                - KEYS_ONLY (default. Smallest index, more performant)
+                - INCLUDE (custom attributes included)
+                - ALL  (INCLUDE *.. Biggest index, least performance)
+            - Querying an attribute not in primary key/secondary indexes is still possible, but will be queried on main table - NOT index. Will cost more latency+read capacity
         - Read/Write capacity
             - Used for partitioning across multiple servers
         - Streams
@@ -183,5 +191,174 @@
             - A record lives for 24 hours and is then removed from the stream
             - Can be used as a trigger for AWS Lambda.
                 - Example: New Customer entries trigger Lambda which in turn trigger Simple Email Service (SES) to send welcome mail to said customer.
+    - Overview & limits
+        - Fully managed NoSQL
+        - Built in Monitoring
+        - Consistent and performance
+            - Data stored on SSDs
+            - Can control throughput read/write capacity
+            - Can spread load between servers/tables
+            - Replication across multiple availability zones in an AWS region
+        - Different levels of consistency
+            - Eventually consistent
+            - Strongly consistent
+        - Conditional updates & concurrency control
+            - Conditional writes
+            - Atomic counter
+        - Integration with Elastic MapReduce & RedShift
+        - Streams
+        - Provisioned Throughput
+            - Flexible read/write performance capacity
+                - Set during table creation
+                - Can be changed at anytime without downtime or performance degradation
+            - Ability to reserve capacity
+        - Limits
+            - 256 tables per region (increase upon request)
+            - partition key length: 2048 byte max (2kb), 1 byte min
+            - Sort key length: 1024 byte max (1kb), 1 byte min
+            - Item size: 400kb including attribute name + value
+            - API specific limits
+                - Table updates (CreateTable, UpdateTable, DeleteTable): 10 simultaneous actions
+                - BatchGetItem returns max 100 items
+                    - Must be less than 16mb
+                - BatchWriteItem can contain 25 PutItem or DeleteItem
+                    - Must be less than 16mb
+                - Query & Scan result set is limited to 1mb of data per call
+                    - LastEvaluatedKey included in response to continue retrieval from last returned element
+    - Provisioned Throughput
+        - Unit of read capacity
+            - For items up to 4kb:
+                - 1 strongly consistent read per second
+                - 2 eventually consistent read per second
+        - Unit of write capacity
+            - For items up to 1kb
+                - 1 write per second
+        - Calculating read capacity
+            - Round up to nearest 4kb multiplier
+                - Items that are 3kb in size still use 4kb data. Can do 1 strongly consistent read or 2 eventually consistent reads per second
+            - Example:
+                - item size 3kb
+                - Want to read 80 items per second from the table
+                - how many read capacity units required?
+                    - Take 1 item, round UP to nearest 4kb multiplier. 
+                    - Take that number divide by 4 => this is how many reads you need for ONE item
+                    - Multiply with items to read per second. Divide by 1 for STRONG consistency, 2 for eventual consistency:
+                        - 80 * (3kb [rounded to 4] / 4kb) / 1 read/s = 80 units of STRONGLY CONSISTENT read capacity
+                        - 80 * (3kb [rounded to 4] / 4kb) / 2 read/s = 40 units of EVENTUALLY CONSISTENT read capacity
+            - Local secondary indexes
+                - Uses read/write capacity from parent table
+                - If only reading index keys and projected attributes the calculations are equal to regular reads
+                    - Calculate using the size of index entry, NOT table item size
+                    - Rounded up to nearest 4kb
+                    - Cost saving because => index entry size < table item size!
+                - If querying non-projected attributes / non-keys we get extra latency and read capacity cost:
+                    - Uses read capacity from index and EVERY item from the table - not just the attribute needed
+                    - Attribute projection VERY important
+            - Global secondary indexes
+                - Have their own throughput capacity
+                - Only support eventually consistent reads => 8kb/read capacity unit (4 kb * 2 reads/s)
+                - Calculate using the size of index entry, NOT table item entry
+                - Cost saving because => index entry size < table item size!
+        - Calculating write capacity
+            - Round up to nearest 1kb multiplier
+            - Example:
+                - item size 1.5kb
+                - 10 writes per second
+                - how many write capacity units required?
+                    - Take 1 item, round UP to nearest 1kb multiplier
+                    - Take that number, divide by 1 => this is how many writes you need for ONE item
+                    - Multiply with items to read per second.
+                        - 10 * (1.5kb [rounded to 2] / 1kb / 1 write/s) = 20 units of write capacity
+            - Local secondary indexes
+                - Uses read/write capacity from parent table
+                - ADDing items, UPDATEing items and DELETEing items also uses table write capacity
+                    - Adding item with projected attribute costs 1 write operation to put into index
+                        - Add
+                    - Updating item with previously undefined attribute that is projected to index: 1 write operation
+                        - Add
+                    - Updating item with previously DEFINED attribute that is projected to index: 2 writes
+                        - Delete
+                        - Add
+                    - Delete item with attribute projected to index: 1 write
+                        - Delete
+            - Global secondary indexes
+                - Have their own throughput capacity
+                - Follow same capacity rules as local secondary indexes
+        - Exceeding throughput
+            - Requests exceeding throughput may be throttled
+            - For global secondary indexes, ALL indexes must have enough write capacity or the WRITE may be throttled -- even if the write doesn't affect the index
+                - This includes any local secondary indexes as well as keys
+    - Query vs. Scan API calls
+        - Query
+            - Finds items using PRIMARY KEY values from table or secondary index
+            - Defaults to return all matching items
+            - Will only return result up to 1mb. Will include lastEvaluatedKey entry to continue retrieval from last returned element 
+                - If LastEvaluatedKey == null => reached last matching item
+            - Defaults to Eventually consistent, can be set to strongly consistent
+                - Global secondary indexes (GSI) only support EVENTUALLY consistent
+            - Can use conditional operators and filters to return precise results
+            - Returns all attributes of an item, or only the ones you want
+            - Data returned in sorted order by sort key value (ascending default)
+        - Scan
+            - Reads every item in a table
+            - Can only return ResultSets up to 1mb in size
+            - Benefits
+                - Can apply filters to the results to refine values
+                - Can return only specific attributes with the "ProjectionExpression" parameter
+                - ResultSet includes LastEvaluatedKey entry to continue retrieval from last returned element
+            - Negatives
+                - Filters applied after data has been scanned
+                    - The more filters the slower performance. 
+                    - The larger the data the slower performance.
+                - Returns only filtered results
+                - Only eventual consistent reads available
+            - Keep in mind
+                - Can reduce Page Size with the "Limit" parameter, to limit how much data you try to retrieve at the same time
+                    - Reduce chance of being throttled
+                - Avoid performing scans on mission-critical tables
+                    - Throughput allocated per table! => Scans may impact available read/writes for the application!!
+                    - Possible to create tables with duplicated contents. Application can then rotate which table to pull data from and perform scans on "non-active" tables
+                - If throttled (response code: You exceeded your provisioned throughput) try again with exponential backoff
+                - Can program logic to increase throughput (using Update Table operation)
+                    - Once requests die down a bit => back off on provision throughput
+    - Conditional Writes & Atomic Counters
+        - Atomic Counters
+            - Increment/decrement value of an attribute without interfering with other write requests
+            - Requests are applied in order they are received
+            - Updates are NOT idempotent - it will update teh value each time it is called
+            - use case: Increasing view count
+        - Conditional Writes
+            - Checks for a condition before proceeding with the operation
+            - Supported for PutItem, DeleteItem, UpdateItem operations
+            - Specify conditions in ConditionExpression
+                - Can contain attribute names, conditional operators, and built-in functions
+            - For this reason updates ARE idempotent!!
+            - Failed conditional writes return ConditionalCheckFailedException
+    - Connecting to DynamoDB from your app using Identity Providers
+        - Can use temporary security credentials to make calls to AWS services
+        - Example: 
+            - Users on mobile app need ability to communicate with DynamoDB.
+            - No hardcoded credentials in the app => would need to push new client in case of updated credentials
+        - Options:
+            - Web Identity Federation
+                - Authentication token provided from:
+                    - Web identity federation: Facebook, Google, etc. (OpenID Connect 2.0 -- OIDC) providers
+                    - Enterprise identity federation: Authentication of users in organizations network
+                - Authentication token exchanged for temporary credentials in AWS which in turn map to an IAM role with permission to use DynamoDB.
+            - Amazon Cognito
+                - Preferred way to manage identities
+                    - Handles identity federation work for us
+                - Cognito Identity
+                    - Create unique identities for users
+                    - Authenticate identities with identity providers - or our own auth process
+                    - Supports unauthenticated identities (anonymous)
+                    - Save mobile user data
+                    - Use credentials obtained to sync data with Cognito Sync
+                - Cognito Sync
+                    - Sync user data across mobile devices and the web
+                    - Client libraries cache data locally
+            - IAM roles
+                - We need roles for our users to assume
+                - Role gives access to DynamoDB
+                - Temporary credentials are associated with a specific IAM role.
 
-            
