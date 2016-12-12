@@ -361,4 +361,84 @@
                 - We need roles for our users to assume
                 - Role gives access to DynamoDB
                 - Temporary credentials are associated with a specific IAM role.
+- SNS
+    - Concepts
+        - Pub-sub service (publication/subscription)
+        - Publishers: Sends messages to SNS topic
+            - Must have correct permissions (IAM role, etc.)
+        - Topic: Communication channels where we publish and subscribe
+            - Topic name
+                - Must be unique
+                - Limit of 256 characters. Alphanumeric, hyphens and underscores allowed
+                - Stored redundantly on multiple servers and data centers
+            - Display name (used for SMS messages)
+            - Has an identifier ARN
+        - Messages: Messages published to specific topic ARN
+        - Subscriptions: Subscriptions on specific topic ARN
+            - Topic ARN
+            - Protocol: The protocol to be used for communication with our endpoint
+            - Endpoint: Endpoint to contact using the defined protocol when a message appears on the subscribed topic
+            - Has a subscription ID
+        - Applications: 
+        - Endpoints: Endpoints subscribed to a topic
+            - HTTP/HTTPS: Website to receive information upon message in topic
+            - Email / Email-JSON
+                - Email-JSON sends as JSON object. Email sends text-based email.
+                - Requires confirmation of email address to avoid spam.
+            - Amazon SQS
+                - SNS uses push, SQS uses pull. I.e. we can push to SQS and pull when possible rather than be ready to accept all the time.
+            - Application: e.g. mobile application
+            - AWS Lambda
+                - Supports versioning / aliases
+        - Fanout scenario: Message sent to single topic, pushed to multiple endpoints
+            - Allows for parallel asynchronous processing
+    - Managing access
+        - Integrates with IAM for control over our own user's permission
+            - Control access for our own users
+            - Can't grant access to other AWS accounts
+            - Can include conditions
+            - Can use both IAM policies adn Access Control policies simultaneously
+            - IAM policies can grant temporary security credentials
+        - Access control policies
+            - AWS account has only permissions by default
+            - Can grant access to other AWS accounts
+            - Allows override of default deny (default deny = soft deny, any other policy will override)
+            - Explicit denies override allows
+            - Order of policies does NOT matter
+            - based off of IAM
+        - Can control:
+            - Who is allowed to publish
+            - Who is allowed to subscribe
+            - Under what conditions
+    - SNS Message Data
+        - POSTs to HTTP/S endpoints include specific headers (x-amz-sns-*)
+        - JSON formatted key-value pairs
+            - Message: Message value specified when the notification was published to the topic
+            - MessageID: UUID; Same ID must be used for retries.
+            - Subject: Optional parameter
+            - Timestamp: Time (GMT) when notification was published
+            - TopicArn: ARN for the topic
+            - Type: Type of message (i.e. Notifications are type Notification)
+            - Signature: Base64-encoded SHA1withRSA signature of message+messageID+subject+type+timestamp+topicarn
+            - SignatureVersion: Version of the Amazon SNS signature used
+            - SigningCertURL: The URL to the certificate used to sign the message
+            - UnsubscribeURL: URL to unsubscribe
+            - up to 10 additional optional message attributes:
+                - Useful for SQS and mobile push notifications (not sent to other endpoints)
+                - Each message attribute should have name, type and value
+    - Mobile Apps: Mobile Push with SNS
+        - Instead of pushing directly to an endpoint we push to a Push Notification Service which in turn pushes to our subscriber endpoint (mobile device with our app)
+            - Amazon Device Messaging (ADM)
+            - Apple Push Notification Service (APNS)
+            - Baidu Cloud Push
+            - Google Cloud Messaging for Android
+            - Microsoft Push Notification Service for Windows Phone
+            - Windows Push Notification Services
+        - SNS needs a device token in order to send notifications to mobile endpoints
+        - Depending on mobile platform there are device tokens or registration IDs.
+            1) Request credentials from mobile platforms (ADM, APNS, etc.)
+            2) Request a token from mobile platforms
+            3) Create a platform application object
+            4) Create a platform endpoint object
+            5) Publish a message to the mobile endpoint
 
