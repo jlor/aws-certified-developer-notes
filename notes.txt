@@ -437,8 +437,151 @@
         - SNS needs a device token in order to send notifications to mobile endpoints
         - Depending on mobile platform there are device tokens or registration IDs.
             1) Request credentials from mobile platforms (ADM, APNS, etc.)
+                - Credentials will be returned from the mobile push notification platforms.
             2) Request a token from mobile platforms
+                - Using the credentials from #1 we request a token from the different mobile push notification platforms for the mobile app and device.
+                - The token will be used to represent this specific device
             3) Create a platform application object
+                - Using the credentials + device token we create a Platform Application Object.
+                - This is part of what we need to send direct push notifications to mobile platforms.
+                - a PlatformApplicationArn is returned.
             4) Create a platform endpoint object
+                - Using the platformApplicationArn we create a platform endpoint object.
+                - This object uniquely identifies and provides push notification access to the device and notification platform!
+                - an EndpointArn is returned.
             5) Publish a message to the mobile endpoint
-
+                - Using the EndpointArn we publish a message to mobile endpoint.
+- SQS
+    - Concepts
+        - A queue of messages.
+        - Uses a polling method (SNS uses push)
+        - Loosely coupled components result in high availability, reliability and scalability
+        - Protects against losing data in case of application failure. Queue will eventually still get consumed.
+        - Redundant infrastructure ==> Guarantees delivery of message AT LEAST ONCE - no promise of ORDER
+        - Multiple writers/readers ==> Multiple components can send/receive messages simultaneously.
+        - Queues can be configured ==> different settings depending on needs.
+        - Access control on who is allowed to send and receive (IAM or SQS policies)
+        - Delay queues ==> Control how much time goes by before a message is available (0s-15 minutes)
+        - PCI compliant!! 
+        - "Visibility timeout" (0s - 12 hours)
+            - Used to block other components from processing a message
+            - Can be extended for individual messages if necessary
+            - Controlable through SQS API
+            - Messages are not deleted by SQS once processed. Must be actively deleted by component.
+        - Short polling vs Long polling
+            - Short polling returns immediately even if queue is empty
+            - Short polling only checks subset of servers making false empty responses possible (NB: redundant infrastructure)
+            - Long polling doesn't return a response until there is a message in the queue
+            - Long polling checks EVERY server to avoid false empty responses
+            - Long polling should be used when possible because it can reduce cost and false empty responses
+        - Message Lifecycle
+            - Component 1 sends message A to queue ==> Message is redundantly distributed across SQS servers
+            - Component 2 is ready so it polls for messages from SQS.
+                - Message A is being processed, but remains in queue, invisible to any other readers for the duration of the "visibility timeout" setting
+            - Component 2 deletes message A from the queue
+                - During "visibility timeout" or the message is available to be processed again
+        - Terms and limitations
+            - Message size: 256kb
+                - If need larger messages store the content of the message in S3 or DynamoDB and let SQS hold a pointer to the AWS S3 object.
+            - Max 120.000 inflight messages
+                - Inflight: Component has received or consumed a message but has not deleted it from the queue yet.
+            - Message Retention Period (1 minute - 14 days)
+                - Amount of time a message will live in a queue if it is not deleted.
+                - Another way of deleting messages if the Component has not deleted them yet.
+            - Receive message wait time (0-20, 1-20 for long polling)
+                - If value > 0 ==> long polling will be enabled.
+                - maximum amount of time that a long polling call will wait for a message to become available before returning empty.
+            - Dead letter queues
+                - Queue other queues can send messages to when those messages have failed to be processed.
+                - Maximum Receives setting on DLQ (1-1000): number of times a message can be received before being sent to DLQ. Applies to individual messages.
+    - API Developer Requirements
+        - Change messages visibility timeout:
+            - ChangeMessageVisibility: Adds the specified amount of time to the message's current time left.
+                - Setting this on a message with 1 second out of 120 seconds left, with a value of 120s will give it a total of 239 seconds visibility timeout.
+                - AWS gives error if Visibility Timeout exceeds 12 hours. Will apply what it can up to maximum 12hrs
+        - Change queues visibility timeout:
+            - SetQueueAttributes:
+                - Attribute.Name = VisibilityTimeout
+                - Sets the default queue visibility timeout
+        - Enable long polling on a queue:
+            - ReceiveMessageWaitTimeSeconds: Anything greater than 0 enables long polling
+        - Send message to queue:
+            - SendMessage: Sends a message to a queue. Can be used to set a message's delay, as well as message attributes, and the message body
+        - Delete a message from the queue:
+            - DeleteMessage
+        - Get a queue's URL:
+            - GetQueueURL: Instead of hardcoding a queue's URL, we can retrieve the URL with this API call.
+- CloudFormation
+    - Essentials
+        - Allows you to create and provision resources in a reusable template fashion
+        - Turns resources into stacks that work as a "unit"
+        - Allows to source control infrastructure
+        - JSON compatible
+        - Allows for cloud-init scripts for EC2 resources
+        - Rollback
+            - If a stack fails to create resource, it will by default rollback
+            - Can be disabled from the API
+        - CLI commands
+            - cfn- prefix has been deprecated, however may be found on exam questions
+            - cfn-describe-stacks: Same as API call DescribeStacks. Describes stacks
+            - cfn-list-stacks: As above, but with ability to filter through different stacks statuses
+        - API calls
+            - ListStackResources: List all resources that belong to a cloudformation stack
+            - DescribeStacks: List description for specified stack, or all stacks if no stack defined.
+            - ListStacks: Returns summary informatino for stacks whose status matches the specified StackStatusFilter. Summary info is kept for 90 days past deletion of a stack.
+    - Template anatomy
+        - AWSTemplateFormatVersion (optional)
+            - Specifies which AWS template version you want to use
+        - Description (optional)
+            - Follows template version section
+            - AWSTemplateFormatVersion REQUIRED if Description specified.
+            - Descriptions help clearly differentiate between templates
+        - Metadata (optional)
+            - JSON objects that provide details about the template
+        - Parameters (optional)
+            - Values you can pass in right before template creation
+            - Allows customization of template
+            - Can have default values as well as allowed values
+        - Mappings (optional)
+            - Maps keys to values. (e.g. make different values for different regions)
+        - Conditions (optional)
+            - Can check values before deciding what to do
+            - Can create different resources in same template depending on condition evaluation
+            - Example: Different environments for dev, test and prod.
+        - Resources
+            - Where you create resources (S3, EC2, Lambda, etc.)
+        - Outputs (optional)
+            - Can output values you'd like to see from the console or from API calls
+            - Example: Can return the S3 bucket name created by the template
+    - Intrinsic Functions
+        - Used to pass in values that are not available until run time
+            - Example: Need ARN value of resource.. You need to create resource before ARN available. E.g. for SNS coupled on other services
+        - Can only be used in Resource properties, Metadata attributes and Update Policy attributes.
+        - Fn::GetAtt (GetAttribute)
+            - Get Website URL for just created S3 bucket:
+            "Resources": { "S3Bucket" : { ... } },
+            "Outputs": { "WebsiteURL" : {
+                "Value": { "Fn::GetAtt": [ "S3Bucket", "WebsiteURL" ] },
+                "Description": "URL for website hosted on S3"
+            }
+        - Fn::FindInMap
+            - E.g. get AMI ID for various regions and architecture
+            "Mappings" {
+                "RegionMap": {
+                    "us-east-1": { "32": "ami-12346578", "64": "ami-87654321" },
+                    "us-west-1": { "32": "ami-23456789", "64": "ami-98765432" }
+                }
+            }
+            "Resources": {
+                "myEC2Instance": {
+                    "Type": "AWS::EC2::Instance",
+                    "Properties": {
+                        "ImageId": { "Fn::FindInMap": [ "RegionMap", { "Ref": "AWS::Region" }, "32"]},
+                        "InstanceType": "m1.small"
+                    }
+                }
+            }
+        - Fn::Join (Concatenates elements, separated by specified delimiter)
+        - Ref (returns a resource or value based on a logical name or parameter)
+        - Fn::GetAZs (get availability zones for specified region)
+        - Fn::Select (Returns a single object from a list of objects by index)
