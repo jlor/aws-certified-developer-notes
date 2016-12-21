@@ -585,3 +585,86 @@
         - Ref (returns a resource or value based on a logical name or parameter)
         - Fn::GetAZs (get availability zones for specified region)
         - Fn::Select (Returns a single object from a list of objects by index)
+- Elastic Beanstalk
+    - Overview
+        - Used to deploy applications on AWS without worrying about infrastructure
+        - Languages supported
+            - Java, .NET, PHP, Node.js, Python, Ruby, Go
+        - Webservers & Containers:
+            - Apache, IIS, Java SE, Nginx, Passenger, Puma, Tomcat, Docket
+        - Deployment platforms
+            - Git, IDEs, Manual upload
+        - When to use
+            - Spend minimal time learning to setup infrastructure
+            - Quick prototyping/testing
+            - Increase developer productivity
+            - Maintain flexibility and control over the resources used to power your application
+        - When not to use
+            - If you need complete control of resource configurations
+            - Existing applications can be difficult to fit in the Elastic Beanstalk "model"
+            - Installing dependencies is different than simply using "apt-get" and can complicate things if you have a lot of dependencies
+        - Core components
+            - Application
+                - Collection of components like environment, version and configuration (think folder with files)
+            - Application Version
+                - Part of an application
+                - Each version unique.
+                - Multiple versions can be deployed
+            - Environment
+                - An application version that is deployed onto AWS resources
+            - Environment Configuration
+                - Settings and parameters that define the environment and resources
+            - Configuration templates
+                - Used to create repeatable environment configurations
+- Simple Workflow Service
+    - Overview
+        - Similar to SQS.
+            - Both are used to create distributed systems
+            - Both allow each task/component to scale independently
+            - SQS uses 'best-effort' messaging order and could have duplicates
+            - SWF guarantees execution order and uses deciders for next instruction
+            - SWF can have a human task as part of the workflow
+            - SQS messages live up to 14 days
+            - SWF workflows or task executions can last up to 1 year
+            - SWF allows for synchronous and asynchronous distributed processing
+        - Task coordination and state management service
+        - Allows us to define step-by-step workflow.
+            - Each step can be called component/task
+            - Each task/component has a set of workers that executes the task instructions
+        - Distributed service so all components are broken up to different pieces to allow scaling up on demand if a a task requires more resources.
+        - Works with on-prem applications or applications in the cloud
+        - A "decider" coordinates and decides which tasks to execute next.
+            - Decider sends a task a set of instructions
+            - When a worker is done executing a job it will return a result to the decider
+            - Decider decides which task to run next based on this result.
+        - Workflows can last up to 1 year
+        - Guarantees order of execution!
+        - Workflow CAN consist of human events (offline task, e.g. filing something in an office)
+    - Domains
+        - Used to help determine the scope of workflows
+        - Multiple workflows can live inside of a domain
+        - Workflows cannot interact with workflows in other domains
+        - Domain is the "scope"
+    - Workers
+        - Activity worker -- process that performs an activity that is part of the workflow
+        - Activity worker poll SWF for new tasks that they need to perform
+        - Worker can consist of a server on EC2 or on-prem.
+    - Tasks
+        - Activity task
+            - e.g. encode video or check inventory
+        - Decision task
+            - Tells the decider that the state of the workflow execution has changed
+            - Allows the decider to detmine what the next activity is
+            - Decision tasks happen whenever the state of the workflow changes (task completed)
+    - Examples
+        - E-Commerce
+            - Customer orders (start)
+            - Verify Order (Order verifiers)
+            - Charge Credit Card (credit card processors)
+            - Ship Order (human)
+            - Record Completion (database recorders)
+            - End
+        - Transcoding videos
+            - Pick video file (human or S3->SNS->)
+            - Transcode (transcoder)
+            - Select thumbnail (human)
